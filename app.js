@@ -46,8 +46,8 @@ const storage = new CloudinaryStorage({
 const upload = multer({ storage });
 
 // EJS
-app.set("views", __dirname);
-app.set("view engine", "ejs");
+const path = require("path");
+app.set("views", path.join(process.cwd()));app.set("view engine", "ejs");
 
 app.use(bodyParser.urlencoded({ extended: true }));
 
