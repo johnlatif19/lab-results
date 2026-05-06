@@ -8,6 +8,15 @@
   ],
   "routes": [
     {
+      "src": "/static/(.*)",
+      "dest": "/static/$1"
+    },
+    {
+      "src": "/(.*\\.ejs)",
+      "dest": "/$1",
+      "status": 404
+    },
+    {
       "src": "/(.*)",
       "dest": "app.js"
     }
