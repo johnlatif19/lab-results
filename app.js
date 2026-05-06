@@ -47,7 +47,7 @@ const upload = multer({ storage });
 
 // EJS
 const path = require("path");
-app.set("views", path.join(process.cwd()));
+app.set("views", path.join(__dirname, "views"));
 app.set("view engine", "ejs");
 
 app.use(bodyParser.urlencoded({ extended: true }));
@@ -89,7 +89,7 @@ const transporter = nodemailer.createTransport({
 
 // Routes
 app.get("/", (req, res) => {
-  res.render("index.ejs");
+  res.render("index");
 });
 
 app.post("/result", async (req, res) => {
@@ -224,6 +224,4 @@ app.post("/admin/notify", async (req, res) => {
   });
 });
 
-app.listen(PORT, () => {
-  console.log(`✅ شغال على http://localhost:${PORT}`);
-});
+module.exports = app;
