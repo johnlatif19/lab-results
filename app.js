@@ -1,20 +1,15 @@
 const express = require("express");
 const session = require("express-session");
 const multer = require("multer");
+const { CloudinaryStorage } = require("multer-storage-cloudinary");
+const cloudinary = require("cloudinary").v2;
 const nodemailer = require("nodemailer");
 const bodyParser = require("body-parser");
-const fs = require("fs");
-const path = require("path");
 require("dotenv").config();
 
 const admin = require("firebase-admin");
 
-// 🔥 تأكد إن الفولدر بيتعمل تلقائي
-if (!fs.existsSync("uploads")) {
-  fs.mkdirSync("uploads");
-}
-
-// 🔥 تأكد من وجود Firebase config
+// Firebase
 if (!process.env.FIREBASE_CONFIG) {
   console.log("❌ FIREBASE_CONFIG مش موجود");
   process.exit(1);
@@ -22,48 +17,59 @@ if (!process.env.FIREBASE_CONFIG) {
 
 const firebaseConfig = JSON.parse(process.env.FIREBASE_CONFIG);
 
-// تهيئة Firebase
 admin.initializeApp({
   credential: admin.credential.cert(firebaseConfig),
 });
+
 const db = admin.firestore();
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// إعدادات رفع الملفات
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => cb(null, "uploads/"),
-  filename: (req, file, cb) => cb(null, Date.now() + "-" + file.originalname),
+// 🔥 Cloudinary Config
+cloudinary.config({
+  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+  api_key: process.env.CLOUDINARY_API_KEY,
+  api_secret: process.env.CLOUDINARY_API_SECRET,
 });
+
+// 🔥 Multer + Cloudinary
+const storage = new CloudinaryStorage({
+  cloudinary,
+  params: {
+    folder: "lab-results",
+    resource_type: "auto",
+    public_id: (req, file) => Date.now() + "-" + file.originalname,
+  },
+});
+
 const upload = multer({ storage });
 
-// 🔥 خلي Express يقرأ ملفات EJS من نفس المكان
+// EJS
 app.set("views", __dirname);
 app.set("view engine", "ejs");
 
-// ❌ شيلنا public عشان مش عندك فولدر
-// app.use(express.static("public"));
-
 app.use(bodyParser.urlencoded({ extended: true }));
+
+// ⚠️ session مش مثالي على Vercel بس شغال مبدئيًا
 app.use(session({
   secret: "secret-key",
   resave: false,
   saveUninitialized: true,
 }));
 
-// 🔥 Firestore Functions
+// Firestore
 async function loadResults() {
   const snapshot = await db.collection("results").get();
-  return snapshot.docs.map(doc => doc.data());
+  return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 }
 
-async function addResult(result) {
-  await db.collection("results").doc(result.file).set(result);
+async function addResult(id, result) {
+  await db.collection("results").doc(id).set(result);
 }
 
-async function deleteResult(file) {
-  await db.collection("results").doc(file).delete();
+async function deleteResult(id) {
+  await db.collection("results").doc(id).delete();
 }
 
 async function findResultsByPhone(phone) {
@@ -71,7 +77,7 @@ async function findResultsByPhone(phone) {
   return snapshot.docs.map(doc => doc.data());
 }
 
-// إعداد البريد
+// Email
 const transporter = nodemailer.createTransport({
   service: "gmail",
   auth: {
@@ -80,7 +86,7 @@ const transporter = nodemailer.createTransport({
   },
 });
 
-// الصفحات
+// Routes
 app.get("/", (req, res) => {
   res.render("index");
 });
@@ -89,20 +95,20 @@ app.post("/result", async (req, res) => {
   const phone = req.body.phone;
   const filteredResults = await findResultsByPhone(phone);
 
-  res.render("result", { 
+  res.render("result", {
     result: filteredResults,
     phoneNumber: phone
   });
 });
 
-app.get("/download/:filename", (req, res) => {
-  const file = path.join(__dirname, "uploads", req.params.filename);
-  res.download(file);
-});
+// 🔥 عرض الملف (Cloudinary)
+app.get("/view/:id", async (req, res) => {
+  const doc = await db.collection("results").doc(req.params.id).get();
+  const data = doc.data();
 
-app.get("/view/:filename", (req, res) => {
-  const file = path.join(__dirname, "uploads", req.params.filename);
-  res.sendFile(file);
+  if (!data) return res.send("Not found");
+
+  res.redirect(data.file);
 });
 
 // admin
@@ -135,11 +141,16 @@ app.get("/admin/logout", (req, res) => {
   });
 });
 
+// 🔥 Upload
 app.post("/admin/upload", upload.single("pdf"), async (req, res) => {
   if (!req.session.loggedIn) return res.redirect("/admin");
 
   const { name, phone, email, test, notes } = req.body;
-  const file = req.file.filename;
+
+  const fileUrl = req.file.path;
+  const public_id = req.file.filename;
+
+  const id = public_id; // نستخدمه كـ doc id
 
   const newResult = {
     name,
@@ -147,44 +158,55 @@ app.post("/admin/upload", upload.single("pdf"), async (req, res) => {
     phone,
     email,
     notes: notes || "",
-    file,
+    file: fileUrl,
+    public_id,
     date: new Date().toLocaleString("ar-EG", { timeZone: "Africa/Cairo" })
   };
 
-  await addResult(newResult);
+  await addResult(id, newResult);
 
-  const link = `http://lab-results.up.railway.app/`;
+  const link = `https://lab-results.vercel.app/`;
 
   const mailOptions = {
     from: process.env.EMAIL_ADDRESS,
     to: email,
     subject: "نتيجة التحاليل الخاصة بك",
-    text: `مرحبًا ${name}\n\nالنتيجة جاهزة:\n${link}\n${notes || ""}`,
+    text: `مرحبًا ${name}\n\nالنتيجة:\n${link}\n${notes || ""}`,
   };
 
   transporter.sendMail(mailOptions, (error) => {
-    if (error) console.log("❌ فشل الإيميل:", error);
+    if (error) console.log("❌ Email Error:", error);
     res.redirect("/admin");
   });
 });
 
+// 🔥 Delete
 app.post("/admin/delete", async (req, res) => {
   if (!req.session.loggedIn) return res.redirect("/admin");
 
-  const fileToDelete = req.body.file;
-  await deleteResult(fileToDelete);
+  const id = req.body.file;
 
-  const filePath = path.join(__dirname, "uploads", fileToDelete);
-  if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
+  const doc = await db.collection("results").doc(id).get();
+  const result = doc.data();
+
+  if (result?.public_id) {
+    await cloudinary.uploader.destroy(result.public_id, {
+      resource_type: "raw",
+    });
+  }
+
+  await deleteResult(id);
 
   res.redirect("/admin");
 });
 
+// Notify
 app.post("/admin/notify", async (req, res) => {
   if (!req.session.loggedIn) return res.redirect("/admin");
 
-  const fileToNotify = req.body.file;
-  const snapshot = await db.collection("results").doc(fileToNotify).get();
+  const id = req.body.file;
+
+  const snapshot = await db.collection("results").doc(id).get();
   const result = snapshot.data();
 
   if (!result) return res.send("غير موجود");
@@ -193,7 +215,7 @@ app.post("/admin/notify", async (req, res) => {
     from: process.env.EMAIL_ADDRESS,
     to: result.email,
     subject: "تم حذف النتيجة",
-    text: `تم حذف نتيجتك. للتواصل: https://wa.me/+201274445091`,
+    text: `تم حذف نتيجتك.`,
   };
 
   transporter.sendMail(mailOptions, () => {
