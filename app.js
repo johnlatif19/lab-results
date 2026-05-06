@@ -47,7 +47,8 @@ const upload = multer({ storage });
 
 // EJS
 const path = require("path");
-app.set("views", path.join(process.cwd()));app.set("view engine", "ejs");
+app.set("views", path.join(process.cwd()));
+app.set("view engine", "ejs");
 
 app.use(bodyParser.urlencoded({ extended: true }));
 
@@ -88,7 +89,7 @@ const transporter = nodemailer.createTransport({
 
 // Routes
 app.get("/", (req, res) => {
-  res.render("index");
+  res.render("index.ejs");
 });
 
 app.post("/result", async (req, res) => {
