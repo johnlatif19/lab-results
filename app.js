@@ -45,18 +45,28 @@ const storage = new CloudinaryStorage({
 
 const upload = multer({ storage });
 
-// EJS - الملفات في نفس المستوى (بدون مجلد views)
+// EJS
 const path = require("path");
-app.set("views", __dirname); // 👈 يبحث عن .ejs في نفس مجلد app.js
+app.set("views", path.join(__dirname, "views"));
 app.set("view engine", "ejs");
 
 app.use(bodyParser.urlencoded({ extended: true }));
+app.use(bodyParser.json());
 
-// ⚠️ session
+// 🔥 إصلاح مشكلة Session - استخدام memorystore مناسب لـ Vercel
+const MemoryStore = require('memorystore')(session);
+
 app.use(session({
-  secret: "secret-key",
+  secret: process.env.SESSION_SECRET || "secret-key",
   resave: false,
-  saveUninitialized: true,
+  saveUninitialized: false,
+  store: new MemoryStore({
+    checkPeriod: 86400000 // 24 ساعة
+  }),
+  cookie: {
+    secure: process.env.NODE_ENV === 'production',
+    maxAge: 86400000 // 24 ساعة
+  }
 }));
 
 // Firestore functions
@@ -112,7 +122,7 @@ app.get("/view/:id", async (req, res) => {
   res.redirect(data.file);
 });
 
-// Admin
+// Admin routes
 app.get("/admin", async (req, res) => {
   if (req.session.loggedIn) {
     const results = await loadResults();
@@ -166,7 +176,7 @@ app.post("/admin/upload", upload.single("pdf"), async (req, res) => {
 
   await addResult(id, newResult);
 
-  const link = `https://${req.get('host') || 'localhost:3000'}/`;
+  const link = `https://${req.get('host')}/`;
 
   const mailOptions = {
     from: process.env.EMAIL_ADDRESS,
@@ -224,5 +234,4 @@ app.post("/admin/notify", async (req, res) => {
   });
 });
 
-// تصدير التطبيق لـ Vercel
 module.exports = app;
