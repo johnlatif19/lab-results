@@ -26,14 +26,14 @@ const db = admin.firestore();
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// 🔥 Cloudinary Config
+// Cloudinary Config
 cloudinary.config({
   cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
   api_key: process.env.CLOUDINARY_API_KEY,
   api_secret: process.env.CLOUDINARY_API_SECRET,
 });
 
-// 🔥 Multer + Cloudinary
+// Multer + Cloudinary
 const storage = new CloudinaryStorage({
   cloudinary,
   params: {
@@ -45,15 +45,15 @@ const storage = new CloudinaryStorage({
 
 const upload = multer({ storage });
 
-// EJS
+// EJS - من نفس المجلد (مفيش views)
 const path = require("path");
-app.set("views", path.join(__dirname, "views"));
+app.set("views", __dirname);  // هنا بقولك دور في نفس المكان
 app.set("view engine", "ejs");
 
 app.use(bodyParser.urlencoded({ extended: true }));
 app.use(bodyParser.json());
 
-// 🔥 إصلاح مشكلة Session - استخدام memorystore مناسب لـ Vercel
+// Session مع memorystore عشان يشتغل على Vercel
 const MemoryStore = require('memorystore')(session);
 
 app.use(session({
@@ -61,11 +61,11 @@ app.use(session({
   resave: false,
   saveUninitialized: false,
   store: new MemoryStore({
-    checkPeriod: 86400000 // 24 ساعة
+    checkPeriod: 86400000
   }),
   cookie: {
     secure: process.env.NODE_ENV === 'production',
-    maxAge: 86400000 // 24 ساعة
+    maxAge: 86400000
   }
 }));
 
@@ -112,7 +112,6 @@ app.post("/result", async (req, res) => {
   });
 });
 
-// 🔥 عرض الملف (Cloudinary)
 app.get("/view/:id", async (req, res) => {
   const doc = await db.collection("results").doc(req.params.id).get();
   const data = doc.data();
@@ -122,7 +121,7 @@ app.get("/view/:id", async (req, res) => {
   res.redirect(data.file);
 });
 
-// Admin routes
+// Admin
 app.get("/admin", async (req, res) => {
   if (req.session.loggedIn) {
     const results = await loadResults();
@@ -152,7 +151,7 @@ app.get("/admin/logout", (req, res) => {
   });
 });
 
-// 🔥 Upload
+// Upload
 app.post("/admin/upload", upload.single("pdf"), async (req, res) => {
   if (!req.session.loggedIn) return res.redirect("/admin");
 
@@ -182,7 +181,7 @@ app.post("/admin/upload", upload.single("pdf"), async (req, res) => {
     from: process.env.EMAIL_ADDRESS,
     to: email,
     subject: "نتيجة التحاليل الخاصة بك",
-    text: `مرحبًا ${name}\n\nيمكنك الاطلاع على نتيجتك عبر الرابط التالي:\n${link}\n\nملاحظات: ${notes || "لا توجد"}`,
+    text: `مرحبًا ${name}\n\nنتيجتك جاهزة: ${link}\n${notes || ""}`,
   };
 
   transporter.sendMail(mailOptions, (error) => {
@@ -191,7 +190,7 @@ app.post("/admin/upload", upload.single("pdf"), async (req, res) => {
   });
 });
 
-// 🔥 Delete
+// Delete
 app.post("/admin/delete", async (req, res) => {
   if (!req.session.loggedIn) return res.redirect("/admin");
 
@@ -207,7 +206,6 @@ app.post("/admin/delete", async (req, res) => {
   }
 
   await deleteResult(id);
-
   res.redirect("/admin");
 });
 
@@ -216,7 +214,6 @@ app.post("/admin/notify", async (req, res) => {
   if (!req.session.loggedIn) return res.redirect("/admin");
 
   const id = req.body.file;
-
   const snapshot = await db.collection("results").doc(id).get();
   const result = snapshot.data();
 
