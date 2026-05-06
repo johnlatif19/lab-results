@@ -45,15 +45,15 @@ const storage = new CloudinaryStorage({
 
 const upload = multer({ storage });
 
-// EJS - من نفس المجلد (مفيش views)
+// EJS - باستخدام مجلد views
 const path = require("path");
-app.set("views", __dirname);  // هنا بقولك دور في نفس المكان
+app.set("views", path.join(__dirname, "views"));
 app.set("view engine", "ejs");
 
 app.use(bodyParser.urlencoded({ extended: true }));
 app.use(bodyParser.json());
 
-// Session مع memorystore عشان يشتغل على Vercel
+// Session
 const MemoryStore = require('memorystore')(session);
 
 app.use(session({
@@ -105,7 +105,6 @@ app.get("/", (req, res) => {
 app.post("/result", async (req, res) => {
   const phone = req.body.phone;
   const filteredResults = await findResultsByPhone(phone);
-
   res.render("result", {
     result: filteredResults,
     phoneNumber: phone
@@ -115,9 +114,7 @@ app.post("/result", async (req, res) => {
 app.get("/view/:id", async (req, res) => {
   const doc = await db.collection("results").doc(req.params.id).get();
   const data = doc.data();
-
   if (!data) return res.send("Not found");
-
   res.redirect(data.file);
 });
 
@@ -133,7 +130,6 @@ app.get("/admin", async (req, res) => {
 
 app.post("/admin/login", (req, res) => {
   const { username, password } = req.body;
-
   if (
     username === (process.env.ADMIN_USERNAME || "john") &&
     password === (process.env.ADMIN_PASSWORD || "latif")
@@ -156,10 +152,8 @@ app.post("/admin/upload", upload.single("pdf"), async (req, res) => {
   if (!req.session.loggedIn) return res.redirect("/admin");
 
   const { name, phone, email, test, notes } = req.body;
-
   const fileUrl = req.file.path;
   const public_id = req.file.filename;
-
   const id = public_id;
 
   const newResult = {
@@ -174,7 +168,6 @@ app.post("/admin/upload", upload.single("pdf"), async (req, res) => {
   };
 
   await addResult(id, newResult);
-
   const link = `https://${req.get('host')}/`;
 
   const mailOptions = {
@@ -195,14 +188,11 @@ app.post("/admin/delete", async (req, res) => {
   if (!req.session.loggedIn) return res.redirect("/admin");
 
   const id = req.body.file;
-
   const doc = await db.collection("results").doc(id).get();
   const result = doc.data();
 
   if (result?.public_id) {
-    await cloudinary.uploader.destroy(result.public_id, {
-      resource_type: "raw",
-    });
+    await cloudinary.uploader.destroy(result.public_id, { resource_type: "raw" });
   }
 
   await deleteResult(id);
