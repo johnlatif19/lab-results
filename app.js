@@ -45,22 +45,21 @@ const storage = new CloudinaryStorage({
 
 const upload = multer({ storage });
 
-// EJS
+// EJS - الملفات في نفس المستوى (بدون مجلد views)
 const path = require("path");
-app.set("views", path.join(__dirname, "views"));
-
+app.set("views", __dirname); // 👈 يبحث عن .ejs في نفس مجلد app.js
 app.set("view engine", "ejs");
 
 app.use(bodyParser.urlencoded({ extended: true }));
 
-// ⚠️ session مش مثالي على Vercel بس شغال مبدئيًا
+// ⚠️ session
 app.use(session({
   secret: "secret-key",
   resave: false,
   saveUninitialized: true,
 }));
 
-// Firestore
+// Firestore functions
 async function loadResults() {
   const snapshot = await db.collection("results").get();
   return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
@@ -113,7 +112,7 @@ app.get("/view/:id", async (req, res) => {
   res.redirect(data.file);
 });
 
-// admin
+// Admin
 app.get("/admin", async (req, res) => {
   if (req.session.loggedIn) {
     const results = await loadResults();
@@ -152,7 +151,7 @@ app.post("/admin/upload", upload.single("pdf"), async (req, res) => {
   const fileUrl = req.file.path;
   const public_id = req.file.filename;
 
-  const id = public_id; // نستخدمه كـ doc id
+  const id = public_id;
 
   const newResult = {
     name,
@@ -167,13 +166,13 @@ app.post("/admin/upload", upload.single("pdf"), async (req, res) => {
 
   await addResult(id, newResult);
 
-  const link = `https://labb-results.vercel.app/`;
+  const link = `https://${req.get('host') || 'localhost:3000'}/`;
 
   const mailOptions = {
     from: process.env.EMAIL_ADDRESS,
     to: email,
     subject: "نتيجة التحاليل الخاصة بك",
-    text: `مرحبًا ${name}\n\nالنتيجة:\n${link}\n${notes || ""}`,
+    text: `مرحبًا ${name}\n\nيمكنك الاطلاع على نتيجتك عبر الرابط التالي:\n${link}\n\nملاحظات: ${notes || "لا توجد"}`,
   };
 
   transporter.sendMail(mailOptions, (error) => {
@@ -225,4 +224,5 @@ app.post("/admin/notify", async (req, res) => {
   });
 });
 
+// تصدير التطبيق لـ Vercel
 module.exports = app;
